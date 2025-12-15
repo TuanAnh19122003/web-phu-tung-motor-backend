@@ -1,9 +1,8 @@
 const Product = require('../models/product.model');
 const Category = require('../models/category.model');
-const path = require('path');
-const fs = require('fs');
 const Discount = require('../models/discount.model');
 const { Op } = require('sequelize');
+const { uploadToCloudinary } = require('../utils/multer');
 
 class ProductService {
     static async findAll(options = {}) {
@@ -18,22 +17,18 @@ class ProductService {
             ];
         }
 
-        // Filter category và type
         if (types && types.length > 0) {
             whereClause.type = { [Op.in]: types };
         }
 
-        // Filter price
         if (priceMin !== undefined && priceMax !== undefined) {
             whereClause.price = { [Op.between]: [priceMin, priceMax] };
         }
 
-        // Filter featured
         if (featured !== undefined) {
             whereClause.is_featured = featured === 'true';
         }
 
-        // Include Category và Discount
         const includeClause = [
             {
                 model: Category,
@@ -61,7 +56,6 @@ class ProductService {
 
         const result = await Product.findAndCountAll(queryOptions);
 
-        // Tính finalPrice
         const rows = result.rows.map(p => {
             const product = p.toJSON();
             product.originalPrice = product.price;
@@ -90,7 +84,7 @@ class ProductService {
         const p = product.toJSON();
         p.originalPrice = p.price;
         if (p.discount) {
-            p.finalPrice = Math.round(p.price * (1 - product.discount.percentage / 100));
+            p.finalPrice = Math.round(product.price * (1 - product.discount.percentage / 100));
         } else {
             p.finalPrice = p.price;
         }
@@ -98,28 +92,30 @@ class ProductService {
         return p;
     }
 
-
     static async create(data, file) {
         if (file) {
-            data.image = `uploads/${file.filename}`
+            const uploadResult = await uploadToCloudinary(file);
+            data.image = uploadResult.url;
+            data.image_public_id = uploadResult.public_id;
         }
         const product = await Product.create(data);
         return product;
     }
 
     static async update(id, data, file) {
-        const product = await Product.findOne({ where: { id: id } });
+        const product = await Product.findOne({ where: { id } });
         if (!product) throw new Error('Product not found');
-        if (file) {
-            if (product.image) {
-                const oldImagePath = path.join(__dirname, '..', product.image);
 
-                if (fs.existsSync(oldImagePath)) {
-                    fs.unlinkSync(oldImagePath);
-                }
+        if (file) {
+            // Xóa ảnh cũ trên Cloudinary
+            if (product.image_public_id) {
+                const cloudinary = require('../config/cloudinaryConfig');
+                await cloudinary.uploader.destroy(product.image_public_id);
             }
 
-            data.image = `uploads/${file.filename}`;
+            const uploadResult = await uploadToCloudinary(file);
+            data.image = uploadResult.url;
+            data.image_public_id = uploadResult.public_id;
         }
 
         if (data.discountId === '' || data.discountId === 'null' || data.discountId === null) {
@@ -138,16 +134,13 @@ class ProductService {
         const product = await Product.findByPk(id);
         if (!product) return 0;
 
-        if (product.image) {
-            const imagePath = path.join(__dirname, '..', product.image);
-            if (fs.existsSync(imagePath)) {
-                fs.unlinkSync(imagePath);
-            }
+        if (product.image_public_id) {
+            const cloudinary = require('../config/cloudinaryConfig');
+            await cloudinary.uploader.destroy(product.image_public_id);
         }
 
         return await Product.destroy({ where: { id } });
     }
-
 }
 
 module.exports = ProductService;

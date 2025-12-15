@@ -1,10 +1,11 @@
 const hashPassword = require('../utils/hashPassword');
 const Role = require('../models/role.model');
 const User = require('../models/user.model');
-const path = require('path');
-const fs = require('fs');
+const { uploadToCloudinary } = require('../utils/multer');
+const cloudinary = require('../config/cloudinaryConfig');
 
 class UserService {
+    // Lấy danh sách người dùng với filter, pagination
     static async findAll(options = {}) {
         const { offset, limit, search } = options;
 
@@ -21,7 +22,7 @@ class UserService {
             ];
         }
 
-        const queryOptions = {
+        return await User.findAndCountAll({
             where: whereClause,
             include: {
                 model: Role,
@@ -31,62 +32,76 @@ class UserService {
             offset,
             limit,
             order: [['createdAt', 'ASC']]
-        };
-
-        const users = await User.findAndCountAll(queryOptions);
-        return users;
+        });
     }
 
+    // Tạo người dùng mới
     static async create(data, file) {
         if (data.password) {
             data.password = await hashPassword(data.password);
         }
+
         if (file) {
-            data.image = `uploads/${file.filename}`;
+            try {
+                const uploadResult = await uploadToCloudinary(file);
+                data.image = uploadResult.url;
+                data.image_public_id = uploadResult.public_id;
+            } catch (err) {
+                console.error('Upload ảnh thất bại:', err.message);
+                throw new Error('Upload ảnh thất bại');
+            }
         }
 
-        const user = await User.create(data);
-        return user;
+        return await User.create(data);
     }
-    
-    static async update(id, data, file) {
-        const user = await User.findOne({ where: { id: id } });
-        if (!user) throw new Error('User không tồn tại');
 
+    // Cập nhật người dùng
+    static async update(id, data, file) {
+        const user = await User.findByPk(id);
+        if (!user) throw new Error('Người dùng không tồn tại');
+
+        // Hash password nếu thay đổi
         if (data.password && data.password !== user.password) {
             data.password = await hashPassword(data.password);
         } else {
             delete data.password;
         }
+
+        // Xử lý file ảnh mới
         if (file) {
-            if (user.image) {
-                const oldImagePath = path.join(__dirname, '..', user.image);
-
-                if (fs.existsSync(oldImagePath)) {
-                    fs.unlinkSync(oldImagePath);
+            try {
+                // Xóa ảnh cũ trên Cloudinary
+                if (user.image_public_id) {
+                    await cloudinary.uploader.destroy(user.image_public_id);
                 }
-            }
 
-            data.image = `uploads/${file.filename}`;
+                const uploadResult = await uploadToCloudinary(file);
+                data.image = uploadResult.url;
+                data.image_public_id = uploadResult.public_id;
+            } catch (err) {
+                console.error('Upload ảnh thất bại:', err.message);
+                throw new Error('Upload ảnh thất bại');
+            }
         }
 
-        return await user.update(data)
+        return await user.update(data);
     }
 
+    // Xóa người dùng
     static async delete(id) {
         const user = await User.findByPk(id);
         if (!user) return 0;
 
-        if (user.image) {
-            const imagePath = path.join(__dirname, '..', user.image);
-            if (fs.existsSync(imagePath)) {
-                fs.unlinkSync(imagePath);
+        if (user.image_public_id) {
+            try {
+                await cloudinary.uploader.destroy(user.image_public_id);
+            } catch (err) {
+                console.error('Xóa ảnh thất bại:', err.message);
             }
         }
 
         return await User.destroy({ where: { id } });
     }
-
 }
 
 module.exports = UserService;
