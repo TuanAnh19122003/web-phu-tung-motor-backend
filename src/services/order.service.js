@@ -32,7 +32,7 @@ class OrderService {
             include: [
                 {
                     model: OrderItem,
-                    as: 'items',
+                    as: 'orderItems',
                     include: [
                         { model: Product, as: 'product' },
                     ],

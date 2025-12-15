@@ -53,14 +53,17 @@ const Product = sequelize.define('Product', {
         beforeCreate: (product) => {
             if (product.name) {
                 product.slug = normalizeName(product.name);
+                console.log('Generating slug for:', product.name, '=>', product.slug);
             }
         },
         beforeUpdate: (product) => {
             if (product.name) {
                 product.slug = normalizeName(product.name);
+                console.log('Updating slug for:', product.name, '=>', product.slug);
             }
         }
     }
+
 });
 
 module.exports = Product;
