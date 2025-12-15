@@ -12,7 +12,7 @@ class OrderService {
                 { model: User, as: 'user' },
                 {
                     model: OrderItem,
-                    as: 'items',
+                    as: 'orderItems',
                     include: [
                         { model: Product, as: 'product' },
                     ],
