@@ -13,7 +13,6 @@ class ProductService {
 
         if (search) {
             whereClause[Op.or] = [
-                { id: { [Op.like]: `%${search}%` } },
                 { name: { [Op.like]: `%${search}%` } },
                 { '$category.name$': { [Op.like]: `%${search}%` } }
             ];
